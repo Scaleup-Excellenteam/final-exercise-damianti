@@ -1,7 +1,7 @@
 from pptx import Presentation
 
 
-def parse_presentation(file_path):
+def parse_presentation(file_path = "asyncio-intro.pptx"):
     presentation = Presentation(file_path)
     slides = []
     for slide in presentation.slides:
