@@ -8,6 +8,7 @@ import json
 from dotenv import load_dotenv
 import sys
 from datetime import datetime
+from functools import wraps
 
 # Configure logging
 logging.basicConfig(filename='program_logs.log', level=logging.INFO, format='[%(levelname)s] %(message)s')
@@ -16,19 +17,44 @@ load_dotenv()
 api_key = os.getenv("OPENAI_API_KEY_3")
 
 
-async def send_prompt(prompt, slide_number):
+def timeout(seconds):
+    def decorator(func):
+        @wraps(func)
+        async def wrapper(*args, **kwargs):
+            return await asyncio.wait_for(func(*args, **kwargs), timeout=seconds)
+
+        return wrapper
+
+    return decorator
+
+
+def handle_errors(func):
+    @wraps(func)
+    async def wrapper(*args, **kwargs):
+        try:
+            return await func(*args, **kwargs)
+        except Exception as e:
+            logging.error(f"An error occurred while processing slide {args[1]}: {e}")
+            return f"Slide {args[1]}: An error occurred"
+
+    return wrapper
+
+
+@timeout(10)
+@handle_errors
+async def send_prompt(prompt: str, slide_number: int) -> str:
     openai.api_key = api_key
     logging.info("Sending prompt...")
 
     response = await openai.ChatCompletion.acreate(
         model="gpt-3.5-turbo",
         messages=[{"role": "user", "content": prompt}])
-    logging.info(f"response from gpt: {response.choices[0].message.content}")
+    logging.info(f"response from gpt to slide {slide_number}: {response.choices[0].message.content}")
 
     return f"Slide {slide_number}: {response.choices[0].message.content}"
 
 
-async def gpt_explainer(presentation_path):
+async def gpt_explainer(presentation_path: str) -> None:
     parsed_data = parser.parse_presentation(presentation_path)
 
     tasks = []
@@ -50,8 +76,6 @@ async def gpt_explainer(presentation_path):
         tasks.append(task)
         await asyncio.sleep(1)  # Delay between API requests
 
-
-
     # Wait for all tasks to complete
     responses = await asyncio.gather(*tasks)
     file_name = presentation_path.split('/')[-1].split('.')[0]
@@ -68,8 +92,8 @@ if __name__ == '__main__':
 
     path = sys.argv[1]
     start_time = datetime.now()
-    logging.info(f"Starting GPT explainer at {start_time}")
+    logging.info(f"\n\n\nStarting GPT explainer at {start_time}")
     asyncio.run(gpt_explainer(path))
     end_time = datetime.now()
     total_time = end_time - start_time
-    logging.info(f"GPT explainer finished at {end_time}. Total running time: {total_time}")
+    logging.info(f"\nGPT explainer finished at {end_time}. Total running time: {total_time}")
