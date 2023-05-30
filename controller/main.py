@@ -9,49 +9,31 @@ from dotenv import load_dotenv
 import sys
 from datetime import datetime
 from functools import wraps
+import backoff
 
 # Configure logging
 logging.basicConfig(filename='program_logs.log', level=logging.INFO, format='[%(levelname)s] %(message)s')
 # Load environment variables, including the API key
 load_dotenv()
-api_key = os.getenv("OPENAI_API_KEY_3")
+api_key = os.getenv("OPENAI_API_KEY")
 
 
-def timeout(seconds):
-    def decorator(func):
-        @wraps(func)
-        async def wrapper(*args, **kwargs):
-            return await asyncio.wait_for(func(*args, **kwargs), timeout=seconds)
-
-        return wrapper
-
-    return decorator
-
-
-def handle_errors(func):
-    @wraps(func)
-    async def wrapper(*args, **kwargs):
-        try:
-            return await func(*args, **kwargs)
-        except Exception as e:
-            logging.error(f"An error occurred while processing slide {args[1]}: {e}")
-            return f"Slide {args[1]}: An error occurred"
-
-    return wrapper
-
-
-@timeout(10)
-@handle_errors
+@backoff.on_exception(backoff.expo, (openai.error.RateLimitError, Exception), max_time=30)
 async def send_prompt(prompt: str, slide_number: int) -> str:
-    openai.api_key = api_key
-    logging.info("Sending prompt...")
+    try:
+        openai.api_key = api_key
+        logging.info("Sending prompt...")
 
-    response = await openai.ChatCompletion.acreate(
-        model="gpt-3.5-turbo",
-        messages=[{"role": "user", "content": prompt}])
-    logging.info(f"response from gpt to slide {slide_number}: {response.choices[0].message.content}")
+        response = await openai.ChatCompletion.acreate(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "user", "content": prompt}])
+        logging.info(f"response from gpt to slide {slide_number}: {response.choices[0].message.content}")
 
-    return f"Slide {slide_number}: {response.choices[0].message.content}"
+        return f"Slide {slide_number}: {response.choices[0].message.content}"
+
+    except Exception as e:
+        logging.error(f"An error occurred while processing slide {slide_number}: {e}")
+        return f"Slide {slide_number}: An error occurred"
 
 
 async def gpt_explainer(presentation_path: str) -> None:
