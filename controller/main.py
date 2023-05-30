@@ -8,7 +8,7 @@ import json
 from dotenv import load_dotenv
 import sys
 from datetime import datetime
-from functools import wraps
+import argparse
 import backoff
 
 # Configure logging
@@ -67,15 +67,40 @@ async def gpt_explainer(presentation_path: str) -> None:
         json.dump(responses, file)
 
 
-if __name__ == '__main__':
-    if len(sys.argv) != 2:
-        print("Usage: python main.py <presentation_path>")
-        sys.exit(1)
+def main(path_to_presentation):
 
-    path = sys.argv[1]
     start_time = datetime.now()
     logging.info(f"\n\n\nStarting GPT explainer at {start_time}")
-    asyncio.run(gpt_explainer(path))
-    end_time = datetime.now()
-    total_time = end_time - start_time
-    logging.info(f"\nGPT explainer finished at {end_time}. Total running time: {total_time}")
+    try:
+        asyncio.run(gpt_explainer(path_to_presentation))
+        end_time = datetime.now()
+        total_time = end_time - start_time
+        logging.info(f"\nGPT explainer finished at {end_time}. Total running time: {total_time}")
+
+    except Exception as e:
+        end_time = datetime.now()
+        total_time = end_time - start_time
+        logging.error(f"An error occurred during execution: {e}")
+        logging.info(f"\nGPT explainer finished with errors at {end_time}. Total running time: {total_time}")
+        sys.exit(1)
+
+
+if __name__ == '__main__':
+
+    arg_parser = argparse.ArgumentParser(description='GPT Explainer for PowerPoint Presentations. You input the path '
+                                                     'to the presentation, and the program will '
+                                                     'return in a json file the explanation that chatGPT gives to '
+                                                     'every slide.')
+
+    arg_parser.add_argument('presentation_path', type=str, help='The path to the presentation file.')
+    arg_parser.add_argument('--log', type=str, choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'],
+                            default='INFO', help='Set the logging level.')
+    arg_parser.add_argument('--output', type=str, default=None,
+                            help='Specify the output filename.')
+    arg_parser.add_argument('--dir', type=str, default='./',
+                            help='Specify the output directory.')
+    args = arg_parser.parse_args()
+
+    main(args.presentation_path)
+
+
