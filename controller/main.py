@@ -1,3 +1,14 @@
+"""
+Module to analyze and explain PowerPoint presentations using OpenAI's GPT-3.5.
+
+This module is designed as a command-line interface (CLI) application. It accepts a path to a PowerPoint
+presentation and outputs a JSON file with explanations for each slide. It uses OpenAI's GPT-3.5 model to generate the
+explanations.
+
+Usage:
+    python main.py "path/to/presentation.pptx" --log DEBUG --output my_output --dir "path/to/output/dir"
+"""
+
 import logging
 from pptx_parser_ import parser
 from prompt_generator.generate_prompt import PromptGenerator
@@ -20,6 +31,19 @@ api_key = os.getenv("OPENAI_API_KEY")
 
 @backoff.on_exception(backoff.expo, (openai.error.RateLimitError, Exception), max_time=30)
 async def send_prompt(prompt: str, slide_number: int) -> str:
+    """
+       Send a prompt to GPT-3 and return its response. Function decorated with backoff package to deal with exceptions:
+       if an exceptions is raised, the prompt is sent again until there is no exception raised or 30 seconds
+       passed from the first try
+
+       Args:
+           prompt (str): The prompt to send to GPT-3.
+           slide_number (int): The number of the current slide.
+
+       Returns:
+           str: The response from GPT-3.
+       """
+
     try:
         openai.api_key = api_key
         logging.info("Sending prompt...")
@@ -37,6 +61,16 @@ async def send_prompt(prompt: str, slide_number: int) -> str:
 
 
 async def gpt_explainer(presentation_path: str) -> None:
+    """
+    Explain a PowerPoint presentation using GPT-3.5.
+
+    This function parses the presentation, sends the contents of each slide to GPT-3.5 as a prompt,
+    and collects the responses. It then outputs a JSON file with the explanations.
+
+    Args:
+        presentation_path (str): The path to the PowerPoint presentation.
+    """
+
     parsed_data = parser.parse_presentation(presentation_path)
 
     tasks = []
@@ -68,6 +102,14 @@ async def gpt_explainer(presentation_path: str) -> None:
 
 
 def main(path_to_presentation):
+    """
+    The main function of the script.
+
+    This function handles logging and error handling for the script.
+
+    Args:
+        path_to_presentation (str): The path to the PowerPoint presentation.
+    """
 
     start_time = datetime.now()
     logging.info(f"\n\n\nStarting GPT explainer at {start_time}")
@@ -86,6 +128,11 @@ def main(path_to_presentation):
 
 
 if __name__ == '__main__':
+    """
+   The entry point of the script.
+
+   This section parses command line arguments and calls the main function with the appropriate arguments.
+   """
 
     arg_parser = argparse.ArgumentParser(description='GPT Explainer for PowerPoint Presentations. You input the path '
                                                      'to the presentation, and the program will '
@@ -93,6 +140,7 @@ if __name__ == '__main__':
                                                      'every slide.')
 
     arg_parser.add_argument('presentation_path', type=str, help='The path to the presentation file.')
+
     arg_parser.add_argument('--log', type=str, choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'],
                             default='INFO', help='Set the logging level.')
     arg_parser.add_argument('--output', type=str, default=None,
