@@ -14,9 +14,9 @@ class PromptGenerator:
    """
     def __init__(self):
         self.question_templates = [
-            "Can you explain the following text: {}?",
-            "What are the main points mentioned in this text: {}?",
-            "Please provide a summary of the content in this text: {}.",
+            "Given the following text: {}, explain with details",
+            "Write the main points and implications of this text: {}",
+            "Summarize and explain the content in this text: {}",
         ]
 
     def generate_prompt(self, slide_text: List[str]) -> str:
@@ -32,12 +32,19 @@ class PromptGenerator:
         Returns:
             str: The generated prompt for GPT-3.
         """
-        slide_text = " ".join(slide_text).strip()
+        slide_text = [s for s in slide_text if s.strip()]
+        slide_text = ". ".join(slide_text).strip()
         if not slide_text:
             return ""
 
         prompt_template = random.choice(self.question_templates)
         prompt = prompt_template.format(slide_text)
+
+        # Replace tabs and newlines with spaces
+        prompt = prompt.replace('\t', ' ').replace('\n', ' ')
+
+        # Replace multiple spaces with a single space
+        prompt = ' '.join(prompt.split())
         return prompt
 
 

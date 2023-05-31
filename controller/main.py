@@ -29,7 +29,7 @@ load_dotenv()
 api_key = os.getenv("OPENAI_API_KEY")
 
 
-@backoff.on_exception(backoff.expo, (openai.error.RateLimitError, Exception), max_time=30)
+@backoff.on_exception(backoff.expo, (openai.error.RateLimitError, Exception), max_time=100)
 async def send_prompt(prompt: str, slide_number: int) -> str:
     """
        Send a prompt to GPT-3 and return its response. Function decorated with backoff package to deal with exceptions:
