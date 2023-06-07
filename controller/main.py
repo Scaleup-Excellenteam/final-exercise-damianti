@@ -21,6 +21,7 @@ import sys
 from datetime import datetime
 import argparse
 import backoff
+import time
 
 # Configure logging
 logging.basicConfig(filename='program_logs.log', level=logging.INFO, format='[%(levelname)s] %(message)s')
@@ -54,6 +55,11 @@ async def send_prompt(prompt: str, slide_number: int) -> str:
         logging.info(f"response from gpt to slide {slide_number}: {response.choices[0].message.content}")
 
         return f"Slide {slide_number}: {response.choices[0].message.content}"
+
+    except openai.error.RateLimitError as e:
+        logging.error(f"Rate limit error on slide {slide_number}. Waiting for 60 seconds before retrying.")
+        time.sleep(60)
+        return await send_prompt(prompt, slide_number)
 
     except Exception as e:
         logging.error(f"An error occurred while processing slide {slide_number}: {e}")
