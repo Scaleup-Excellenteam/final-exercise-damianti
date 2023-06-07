@@ -49,7 +49,7 @@ Before getting started, make sure you have the following:
 
 1. Run the program:
     ```shell
-   python main.py "path/to/presentation.pptx" --log DEBUG --output my_output --dir "path/to/output/dir"
+   python controller/main.py "path/to/presentation.pptx" --log DEBUG --output my_output --dir "path/to/output/dir"
 
 In this command:
 - `path/to/presentation.pptx` is the path to the PowerPoint presentation you want to explain.

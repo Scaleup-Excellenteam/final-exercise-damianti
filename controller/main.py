@@ -29,7 +29,7 @@ load_dotenv()
 api_key = os.getenv("OPENAI_API_KEY")
 
 
-@backoff.on_exception(backoff.expo, (openai.error.RateLimitError, Exception), max_time=100)
+@backoff.on_exception(backoff.expo, openai.error.RateLimitError)
 async def send_prompt(prompt: str, slide_number: int) -> str:
     """
        Send a prompt to GPT-3 and return its response. Function decorated with backoff package to deal with exceptions:
@@ -75,6 +75,7 @@ async def gpt_explainer(presentation_path: str) -> None:
 
     tasks = []
     for i, slide in enumerate(parsed_data):
+
         logging.info(f"Processing Slide {i + 1}")
         logging.info("Slide content:")
         logging.info(slide)
@@ -90,7 +91,7 @@ async def gpt_explainer(presentation_path: str) -> None:
 
         task = asyncio.create_task(send_prompt(prompt, i + 1))
         tasks.append(task)
-        await asyncio.sleep(1)  # Delay between API requests
+
 
     # Wait for all tasks to complete
     responses = await asyncio.gather(*tasks)
