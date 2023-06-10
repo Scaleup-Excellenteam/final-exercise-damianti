@@ -1,15 +1,42 @@
 """
 Module to analyze and explain PowerPoint presentations using OpenAI's GPT-3.5.
 
-This module is designed as a command-line interface (CLI) application. It accepts a path to a PowerPoint
-presentation and outputs a JSON file with explanations for each slide. It uses OpenAI's GPT-3.5 model to generate the
-explanations.
+This module provides a command-line interface (CLI) application to analyze and explain PowerPoint presentations using
+ OpenAI's GPT-3.5 model. It takes a path to a PowerPoint presentation as input and generates explanations for each
+ slide, saving them in a JSON file.
+This module looks for pptx files in the uploads file that haven't been processed, it processes them and write the output
+of the process in the output dir
 
 Usage:
-    python main.py "path/to/presentation.pptx" --log DEBUG --output my_output --dir "path/to/output/dir"
+    python Explainer.py "path/to/presentation.pptx"
+
+Functions:
+    - ensure_env_file(): Ensures the existence of the environment file '.env' and its content.
+    - send_prompt(prompt: str, slide_number: int) -> str: Sends a prompt to GPT-3 and returns the response.
+    - gpt_explainer(presentation_path: str) -> None: Explains a PowerPoint presentation using GPT-3.5.
+    - run(): Main loop to continuously process PowerPoint presentations.
+
+Constants:
+    - LOGS_DIRECTORY: The directory path for log files.
+    - OUTPUTS_DIRECTORY: The directory path for output JSON files.
+    - UPLOADS_DIRECTORY: The directory path for uploaded PowerPoint presentations.
+
+Usage Example:
+    python Explainer.py
+
+    This command analyzes and explains the PowerPoint presentation located at "path/to/presentation.pptx" using GPT-3.5.
+
+Note:
+    - Before running the module, ensure that the environment file '.env' exists and contains the OpenAI API key.
+
+Dependencies:
+    - openai: The OpenAI Python library for API communication.
+    - pptx_parser: Custom module for parsing PowerPoint presentations.
+    - prompt_generator: Custom module for generating prompts for each slide.
+
 """
+
 import time
-import logging
 import asyncio
 import openai
 import os
@@ -18,13 +45,15 @@ import sys
 import backoff
 from dotenv import load_dotenv
 from datetime import datetime
+import logging.handlers
 
 from pptx_parser.parser import parse_presentation
 from prompt_generator.generate_prompt import PromptGenerator
 
-LOGS_DIRECTORY = "../logs"
-OUTPUTS_DIRECTORY = "../outputs"
-UPLOADS_DIRECTORY = "../uploads"
+LOGS_DIRECTORY = os.path.abspath(os.path.join(os.path.dirname(__file__), "../logs/explainer_logs"))
+OUTPUTS_DIRECTORY = os.path.abspath(os.path.join(os.path.dirname(__file__), "../outputs"))
+UPLOADS_DIRECTORY = os.path.abspath(os.path.join(os.path.dirname(__file__), "../uploads"))
+REQUESTS_PER_MINUTE = 3
 
 if not os.path.exists(LOGS_DIRECTORY):
     os.makedirs(LOGS_DIRECTORY)
@@ -35,49 +64,50 @@ if not os.path.exists(OUTPUTS_DIRECTORY):
 if not os.path.exists(UPLOADS_DIRECTORY):
     os.makedirs(UPLOADS_DIRECTORY)
 
-def ensure_env_file():
-    if not os.path.exists('.env'):
-        with open('.env', 'w') as f:
-            f.write('OPENAI_API_KEY_4=\n')
+# Configure the log file path
+log_file_name = "explainer.log"
+log_file_path = os.path.join(LOGS_DIRECTORY, log_file_name)
 
+# Configure the logger
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
 
-logging.basicConfig(filename=f'{LOGS_DIRECTORY}/logs.log', level=logging.INFO, format='[%(levelname)s] %(message)s')
-# Load environment variables, including the API key
-ensure_env_file()
+handler = logging.handlers.TimedRotatingFileHandler(log_file_path, when="D", interval=1, backupCount=5)
+handler.setFormatter(logging.Formatter("[%(levelname)s] %(message)s"))
+logger.addHandler(handler)
+
 load_dotenv()
-api_key = os.getenv("OPENAI_API_KEY_4")
+api_key = os.getenv("OPENAI_API_KEY")
 
 
-@backoff.on_exception(backoff.expo, Exception, max_tries=3, on_backoff=lambda _: asyncio.sleep(60))
+@backoff.on_exception(backoff.expo, openai.error.RateLimitError, max_tries=3, on_backoff=lambda _: asyncio.sleep(60))
 async def send_prompt(prompt: str, slide_number: int) -> str:
     """
-       Send a prompt to GPT-3 and return its response. Function decorated with backoff package to deal with exceptions:
-       if an exceptions is raised, the prompt is sent again until there is no exception raised or 30 seconds
-       passed from the first try
+    Send a prompt to GPT-3 and return its response. The function is decorated with the backoff package to deal with
+    exceptions: if an exception is raised, the prompt is sent again until there is no exception raised or 30 seconds
+    have passed from the first try.
 
-       Args:
-           prompt (str): The prompt to send to GPT-3.
-           slide_number (int): The number of the current slide.
+    Args:
+        prompt (str): The prompt to send to GPT-3.
+        slide_number (int): The number of the current slide.
 
-       Returns:
-           str: The response from GPT-3.
-       """
+    Returns:
+        str: The response from GPT-3.
+    """
 
     try:
         openai.api_key = api_key
-        logging.info("Sending prompt...")
-        logging.info("y angora...")
+        logger.info("Sending prompt...")
 
         response = await openai.ChatCompletion.acreate(
             model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": prompt}])
-        logging.info(f"response from gpt to slide {slide_number}: {response.choices[0].message.content}")
-        logging.debug("in debug")
-        logging.info(f'{response.choices}')
+            messages=[{"role": "user", "content": prompt}]
+        )
+        logger.info(f"response from GPT to slide {slide_number}: {response.choices[0].message.content}")
         return f"Slide {slide_number}: {response.choices[0].message.content}"
 
     except Exception as e:
-        logging.error(f"An error occurred while processing slide {slide_number}: {e}")
+        logger.error(f"An error occurred while processing slide {slide_number}: {e}")
         return f"Slide {slide_number}: An error occurred"
 
 
@@ -96,24 +126,22 @@ async def gpt_explainer(presentation_path: str) -> None:
 
     tasks = []
     for i, slide in enumerate(parsed_data):
-        if i > 4:
-            break
 
-        # if i % 3 == 0 and i != 0:
+        if i > 0 and i % REQUESTS_PER_MINUTE == 0:
+            await asyncio.sleep(60)
 
-        print(f'we are going to explain the slide number {i} at {datetime.now()}...')
-        logging.info(f"Processing Slide {i + 1}")
-        logging.info("Slide content:")
-        logging.info(slide)
+        logger.info(f"Processing Slide {i + 1}")
+        logger.info("Slide content:")
+        logger.info(slide)
 
         generator = PromptGenerator()
 
         prompt = generator.generate_prompt(slide)
 
         if not prompt:
-            logging.info(f"Slide number {i + 1} is empty.")
+            logger.info(f"Slide number {i + 1} is empty.")
 
-        logging.info(f"prompt:{prompt}")
+        logger.info(f"prompt: {prompt}")
 
         task = asyncio.create_task(send_prompt(prompt, i + 1))
         tasks.append(task)
@@ -122,16 +150,14 @@ async def gpt_explainer(presentation_path: str) -> None:
     # Wait for all tasks to complete
     responses = await asyncio.gather(*tasks)
     file_name = os.path.splitext(presentation_path.split('/')[-1])[0]
-    print (f'file name is: {file_name}')
-    print(f'presentation_path is: {presentation_path}')
+
     # Save the explanations in a JSON file
     with open(f"{OUTPUTS_DIRECTORY}/{file_name}.json", "w") as file:
         json.dump(responses, file)
 
 
-def run():
+def run() -> None:
     while True:
-
         uploaded_files = set(os.path.splitext(file)[0] for file in os.listdir(UPLOADS_DIRECTORY))
         output_files = set(os.path.splitext(file)[0] for file in os.listdir(OUTPUTS_DIRECTORY))
 
@@ -141,23 +167,23 @@ def run():
             file_to_process = files_to_process.pop()
 
             start_time = datetime.now()
-            logging.info(f"\n\n\nStarting GPT explainer at {start_time}")
+            logger.info(f"\n\n\nStarting GPT explainer at {start_time}")
 
             try:
                 file_full_path = os.path.join(UPLOADS_DIRECTORY, f'{file_to_process}.pptx')
                 asyncio.run(gpt_explainer(file_full_path))
                 end_time = datetime.now()
                 total_time = end_time - start_time
-                logging.info(f"\nGPT explainer finished at {end_time}. Total running time: {total_time}")
+                logger.info(f"\nGPT explainer finished at {end_time}. Total running time: {total_time}")
 
             except Exception as e:
                 end_time = datetime.now()
                 total_time = end_time - start_time
-                logging.error(f"An error occurred during execution: {e}")
-                logging.info(f"\nGPT explainer finished with errors at {end_time}. Total running time: {total_time}")
+                logger.error(f"An error occurred during execution: {e}")
+                logger.info(f"\nGPT explainer finished with errors at {end_time}. Total running time: {total_time}")
                 sys.exit(1)
 
-        time.sleep(20)
+        time.sleep(10)
 
 
 def main():
