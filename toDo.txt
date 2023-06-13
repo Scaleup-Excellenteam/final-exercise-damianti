@@ -1,0 +1,4 @@
+things to write to the readme.md:
+    -do pip install openai
+    -do pip install python-dotenv
+    -create .env file and put your own apikey
